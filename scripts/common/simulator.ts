@@ -486,7 +486,6 @@ export class ERC20ProxyTransfer extends Transfer {
         assert(this.logicContract);
 
         while(!this.isQuit()) {
-            console.log('njsajkd');
             const accountPair = this.accountMgr.chooseAccountPair();
             if (accountPair.length == 0) {
                 console.log(chalk.red('Choose 2 same accounts'));
