@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { ethers } from "hardhat";
 import { sleep } from "./utils";
 import { JsonRpcProvider } from "@ethersproject/providers";
+import { Provider } from "./provider";
 
 export class Transfer {
     readonly MIN_BALANCE: BigNumber = BigNumber.from(10).pow(18);
@@ -51,7 +52,7 @@ export class Transfer {
         this.accountMgr = accountMgr;
     }
 
-    status(): boolean {
+    status(): [boolean, number] {
         const successRate = (this.successedCount/this.totalCount*100).toFixed(2);
         const failedRate = (this.failedCount/this.totalCount*100).toFixed(2);
         const collisionRate = ((this.totalCount-this.successedCount-this.failedCount)/this.totalCount*100).toFixed(2);
@@ -63,7 +64,7 @@ export class Transfer {
             `nonce collision rate:${collisionRate}%`
         ));
 
-        return this.isRunning;
+        return [this.isRunning, this.successedCount];
     }
 
     stop() {
@@ -552,6 +553,11 @@ export class Simulator {
     accountMgr: AccountMgr;
     tasks: Record<string, Transfer> = {};
 
+    gasPrice: BigNumber = BigNumber.from(0);
+    gas: BigNumber = BigNumber.from(0);
+    balances: Record<string, BigNumber> = {}
+    gasPerTx: Record<string, BigNumber> = {}
+
     constructor(accountMgr: AccountMgr) {
         this.accountMgr = accountMgr;
     }
@@ -561,6 +567,18 @@ export class Simulator {
         task.setAccountMgr(this.accountMgr);
 
         this.tasks[name] = task;
+    }
+
+    async listenEvent(event: any) {
+        if (!event) return;
+
+        this.gasPrice = await (new Provider()).getGasPrice();
+        this.gas = BigNumber.from(event.gas)
+
+        for (const reward of event.rewards) {
+            this.balances[reward.rewardAddr] = await this.accountMgr.getBalance(reward.rewardAddr);
+            this.gasPerTx[reward.rewardAddr] = this.gas.mul(reward.rewardPercentage).div(10000).mul(this.gasPrice);
+        }
     }
 
     async start() {
@@ -648,15 +666,23 @@ export class Simulator {
         }
     }
 
-    private showStatus() {
+    private async showStatus() {
         let runningTaskCount = 0;
+        let totalSuccessedCount = 0;
         for (const task of Object.values(this.tasks)) {
-            const isRunning = task.status();
+            const [isRunning, successedCount] = task.status();
             if (isRunning) {
                 runningTaskCount++;
             }
+            totalSuccessedCount += successedCount;
         }
-
         console.log(chalk.blue(`There are ${runningTaskCount} tasks is Running`));
+
+        for (const [addr, val] of Object.entries(this.gasPerTx)) {
+            const oldBalance = this.balances[addr];
+            const addBalance = this.gasPrice.mul(this.gasPerTx[addr]);
+            const newBalance = await this.accountMgr.getBalance(addr);
+            console.log(chalk.blue(`Revenue sharing: address=${addr}, expected added amount=${addBalance}, actual added amount=${newBalance.sub(oldBalance)}`));
+        }
     }
 }

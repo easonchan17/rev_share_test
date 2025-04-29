@@ -1,7 +1,7 @@
 import config from 'config';
 import { error } from 'console';
 // const Web3 = require('web3')
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import { any } from 'hardhat/internal/core/params/argumentTypes';
 
 export class Provider {
@@ -25,5 +25,9 @@ export class Provider {
 
     getProviderInst(): any {
         return this.providerInst;
+    }
+
+    async getGasPrice(): Promise<BigNumber> {
+        return await this.providerInst.getGasPrice();
     }
 }

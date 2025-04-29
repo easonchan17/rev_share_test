@@ -228,7 +228,7 @@ export class Configuration {
         return ok;
     }
 
-    async getConfig(address: string): Promise<AdaptConfig|null> {
+    async getConfig(address: string, isShow=true): Promise<AdaptConfig|null> {
         let adaptedConfig: AdaptConfig|null = null;
 
         if (!ethers.utils.isAddress(address)) return adaptedConfig;
@@ -281,15 +281,35 @@ export class Configuration {
                 adaptedConfig.functionSignatures.push(adaptedFunc);
             }
 
-            console.log(util.inspect(adaptedConfig, {
-                depth: null,
-                colors: true
-            }));
+            if (isShow) {
+                console.log(util.inspect(adaptedConfig, {
+                    depth: null,
+                    colors: true
+                }));
+            }
         } catch (error) {
             console.error(`Target config ${address}:`, error);
         }
 
         return adaptedConfig;
+    }
+
+    async getRevShareList(contractInst: any, eventName: string): Promise<AdaptEvent|null> {
+        const rewardRule = new RewardRule(contractInst, this);
+        const topic = rewardRule.getEventTopic(eventName)
+        if (!topic) return null;
+
+        const adaptedConfig = await this.getConfig(contractInst.address, false);
+        if (!adaptedConfig ||
+            adaptedConfig.events.length === 0) return null;
+
+        for (const event of adaptedConfig.events) {
+            if (event.eventSignature === topic) {
+                return event;
+            }
+        }
+
+        return null;
     }
 
     async initAdmin(): Promise<boolean> {

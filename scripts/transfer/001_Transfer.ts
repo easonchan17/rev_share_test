@@ -5,6 +5,7 @@ import { getContractInst, promptPositiveInteger, waitForInput } from '../common/
 import { assert } from 'console';
 import { Simulator, ERC20Transfer, NativeTokenTransfer } from '../common/simulator';
 import logger from 'node-color-log';
+import { Configuration } from '../common/configuration';
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const { deployments, getNamedAccounts, network } = hre;
@@ -49,6 +50,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
         for (let i = 0; i < simulatorCount; i++) {
             simulator.addTask(`transfer_${symbol}_${i}`, new ERC20Transfer(contractInst, requiredSuccessCount));
         }
+
+        const feeConfig = new Configuration();
+        const adaptedEvent = await feeConfig.getRevShareList(contractInst, "Transfer");
+        simulator.listenEvent(adaptedEvent);
     }
 
     await simulator.start();

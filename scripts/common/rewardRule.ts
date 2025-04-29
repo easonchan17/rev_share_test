@@ -91,6 +91,13 @@ export class RewardRule {
         }
     }
 
+    getEventTopic(source: string): string|null {
+        source = source.trim();
+        if (!source) return null;
+
+        return this.contract.interface.getEventTopic(source);
+    }
+
     addFunction(source: string) {
         source = source.trim();
         if (!source) return;
