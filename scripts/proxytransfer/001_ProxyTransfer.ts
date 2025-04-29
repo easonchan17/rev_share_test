@@ -6,6 +6,7 @@ import { assert } from 'console';
 import { Simulator, ERC20ProxyTransfer } from '../common/simulator';
 import { ethers } from 'hardhat';
 import logger from 'node-color-log';
+import { Configuration } from '../common/configuration';
 
 interface Operations {
     [key: string]: (deploymens: any, deployer: any) => Promise<void>;
@@ -74,6 +75,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     for (let i = 0; i < simulatorCount; i++) {
         simulator.addTask(`proxy_transfer_${symbol}_${i}`, new ERC20ProxyTransfer(proxyContractInst, logicTokenInst, requiredSuccessCount));
     }
+
+    const feeConfig = new Configuration();
+    const adaptedEvent = await feeConfig.getRevShareList(logicTokenInst, "Transfer");
+    simulator.listenEvent(adaptedEvent);
 
     await simulator.start();
 };

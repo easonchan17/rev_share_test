@@ -678,11 +678,14 @@ export class Simulator {
         }
         console.log(chalk.blue(`There are ${runningTaskCount} tasks is Running`));
 
+        if (runningTaskCount > 0) return;
+
         for (const [addr, val] of Object.entries(this.gasPerTx)) {
             const oldBalance = this.balances[addr];
-            const addBalance = this.gasPrice.mul(this.gasPerTx[addr]);
             const newBalance = await this.accountMgr.getBalance(addr);
-            console.log(chalk.blue(`Revenue sharing: address=${addr}, expected added amount=${addBalance}, actual added amount=${newBalance.sub(oldBalance)}`));
+            const expectedAddBalance = this.gasPerTx[addr].mul(totalSuccessedCount);
+            const actualAddAmount = newBalance.sub(oldBalance);
+            console.log(chalk.blue(`Revenue sharing: address=${addr}, expected added amount=${expectedAddBalance}, actual added amount=${actualAddAmount}, is equal=${expectedAddBalance.eq(actualAddAmount)}`));
         }
     }
 }
