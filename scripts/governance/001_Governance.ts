@@ -101,6 +101,7 @@ const FUNC_MAP: Operations = {
         const rewardRule = new RewardRule(contractInst, feeConfig);
         await rewardRule.initBeneficiaries();
         rewardRule.addEvent('Transfer');
+        rewardRule.addEvent('Approval');
         rewardRule.addFunction('transfer');
         rewardRule.addFunction('transferFrom');
 

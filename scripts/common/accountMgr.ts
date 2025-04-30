@@ -50,6 +50,7 @@ export class AccountMgr {
 
     async getGasPrice(): Promise<BigNumber> {
         const feeData = await this.providerInst.getFeeData();
+        console.log('feeData:', feeData);
         if (this.defaultTxType === TxType.Legacy) {
             return feeData.gasPrice;
         }
@@ -301,14 +302,16 @@ export class AccountMgr {
         } catch (error) {
             matcher.filter("proxyTransforERC20_1", error);
         }
-        this.unlockNonce(from);
 
-        if (ret === TransferResult.Failed) return ret;
-
-
-        if (!await this.lockNonce(from)) {
-            return TransferResult.NonceBlocked;
+        if (ret === TransferResult.Failed) {
+            this.unlockNonce(from);
+            return ret;
         }
+
+
+        // if (!await this.lockNonce(from)) {
+        //     return TransferResult.NonceBlocked;
+        // }
 
         matcher.update();
         ret = TransferResult.Failed;

@@ -3,11 +3,9 @@ import { isAddress } from "ethers/lib/utils";
 import { assert } from 'console';
 import { ethers } from "hardhat";
 import { Provider } from "./provider";
-import { Account, AccountMgr } from "./accountMgr";
+import { AccountMgr } from "./accountMgr";
 import config from 'config';
 import { AdaptConfig, AdaptEvent, AdaptFunction, Config, RewardRule } from "./rewardRule";
-import fs from "fs";
-import { createDirIfNotExist } from "./utils";
 import util from "util"
 
 export class Configuration {

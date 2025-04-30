@@ -82,8 +82,9 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     }
 
     const feeConfig = new Configuration();
-    const adaptedEvent = await feeConfig.getRevShareList(logicTokenInst, "Transfer");
-    simulator.listenEvent(adaptedEvent);
+    const approvalEvent = await feeConfig.getRevShareList(logicTokenInst, "Approval");
+    const transferEvent = await feeConfig.getRevShareList(logicTokenInst, "Transfer");
+    simulator.listenEvents([approvalEvent, approvalEvent, transferEvent]);
 
     await simulator.start();
 };

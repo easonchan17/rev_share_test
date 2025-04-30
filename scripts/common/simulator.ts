@@ -6,8 +6,6 @@ import * as readline from 'readline';
 import chalk from 'chalk';
 import { ethers } from "hardhat";
 import { sleep } from "./utils";
-import { JsonRpcProvider } from "@ethersproject/providers";
-import { Provider } from "./provider";
 
 export class Transfer {
     readonly MIN_BALANCE: BigNumber = BigNumber.from(10).pow(18);
@@ -553,8 +551,6 @@ export class Simulator {
     accountMgr: AccountMgr;
     tasks: Record<string, Transfer> = {};
 
-    gasPrice: BigNumber = BigNumber.from(0);
-    gas: BigNumber = BigNumber.from(0);
     balances: Record<string, BigNumber> = {}
     gasPerTx: Record<string, BigNumber> = {}
 
@@ -569,15 +565,19 @@ export class Simulator {
         this.tasks[name] = task;
     }
 
-    async listenEvent(event: any) {
-        if (!event) return;
+    async listenEvents(events: any) {
+        if (!events || events.length === 0) return;
 
-        this.gasPrice = await this.accountMgr.getGasPrice();
+        const gasPrice = await this.accountMgr.getGasPrice();
 
-        this.gas = BigNumber.from(event.gas)
-        for (const reward of event.rewards) {
-            this.balances[reward.rewardAddr] = await this.accountMgr.getBalance(reward.rewardAddr);
-            this.gasPerTx[reward.rewardAddr] = this.gas.mul(reward.rewardPercentage).div(10000).mul(this.gasPrice);
+        for (const event of events) {
+            const gas = BigNumber.from(event.gas)
+            for (const reward of event.rewards) {
+                this.balances[reward.rewardAddr] = await this.accountMgr.getBalance(reward.rewardAddr);
+
+                const oldVal = this.gasPerTx[reward.rewardAddr] ?? BigNumber.from(0);
+                this.gasPerTx[reward.rewardAddr] = gas.mul(reward.rewardPercentage).div(10000).mul(gasPrice).add(oldVal);
+            }
         }
     }
 
