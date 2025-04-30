@@ -48,19 +48,33 @@ export class AccountMgr {
         return true;
     }
 
-    async getGasPriceData() {
-        if (this.defaultTxType === TxType.DynamicFee) {
-            return {
-                maxFeePerGas: BigNumber.from(0),
-                maxPriorityFeePerGas: BigNumber.from(0),
-                type: 2,
-            };
-        } else if (this.defaultTxType === TxType.Legacy) {
-            return {
-                gasPrice: BigNumber.from(0)
-            }
+    async getGasPrice(): Promise<BigNumber> {
+        const feeData = await this.providerInst.getFeeData();
+        if (this.defaultTxType === TxType.Legacy) {
+            return feeData.gasPrice;
         }
-        return null;
+
+        if (this.defaultTxType === TxType.DynamicFee) {
+            return BigNumber.from(Math.min(feeData.maxFeePerGas, feeData.maxPriorityFeePerGas.add(feeData.lastBaseFeePerGas)));
+        }
+
+        return feeData.gasPrice;
+    }
+
+    private printGasPriceData(tx: any) {
+        console.log("txType:", tx.type);
+
+        if (tx.maxPriorityFeePerGas) {
+            console.log("maxPriorityFeePerGas:", tx.maxPriorityFeePerGas.toString());
+        }
+
+        if (tx.maxFeePerGas) {
+            console.log("maxFeePerGas:", tx.maxFeePerGas.toString());
+        }
+
+        if (tx.gasPrice) {
+            console.log("gasPrice:", tx.gasPrice.toString());
+        }
     }
 
     async getBalance(
@@ -202,15 +216,14 @@ export class AccountMgr {
         let ret: TransferResult = TransferResult.Failed;
         try {
             const wallet = new ethers.Wallet(from.privateKey, this.providerInst);
-            const priceData = this.getGasPriceData();
             const tx = await wallet.sendTransaction({
                 to: to.address,
                 value: amount,
-                ...(priceData ?? {})
+                type: this.defaultTxType
             });
 
+            // this.printGasPriceData(tx);
             await tx.wait();
-            // console.log('tx:', tx);
             ret = TransferResult.Success;
         } catch(error) {
             matcher.filter("transfer", error);
@@ -237,15 +250,15 @@ export class AccountMgr {
             const newSigner = new ethers.Wallet(from.privateKey, this.providerInst);
             contract = contract.connect(newSigner);
 
-            const priceData = this.getGasPriceData();
             const tx = await contract.transfer(
                 to.address,
                 amount,
                 {
-                    ...(priceData ?? {})
+                    type: this.defaultTxType
                 }
             );
 
+            // this.printGasPriceData(tx);
             await tx.wait();
             ret = TransferResult.Success;
         } catch (error) {
@@ -268,10 +281,6 @@ export class AccountMgr {
             return TransferResult.NonceBlocked;
         }
 
-        const priceData = this.getGasPriceData();
-
-        console.log(priceData);
-
         const matcher = new ExecutionErrorMatcher();
         const newSigner = new ethers.Wallet(from.privateKey, this.providerInst);
         let ret: TransferResult = TransferResult.Failed;
@@ -282,10 +291,11 @@ export class AccountMgr {
                 proxyContract.address,
                 amount,
                 {
-                    ...(priceData ?? {})
+                    type: this.defaultTxType
                 }
             );
 
+            // this.printGasPriceData(approveTx);
             await approveTx.wait();
             ret = TransferResult.Success;
         } catch (error) {
@@ -308,10 +318,11 @@ export class AccountMgr {
                 to.address,
                 amount,
                 {
-                    ...(priceData ?? {})
+                    type: this.defaultTxType
                 }
             );
 
+            // this.printGasPriceData(proxyTx);
             await proxyTx.wait();
             ret = TransferResult.Success;
         } catch (error) {

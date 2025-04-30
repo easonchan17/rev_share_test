@@ -572,19 +572,7 @@ export class Simulator {
     async listenEvent(event: any) {
         if (!event) return;
 
-        const priceData = await this.accountMgr.getGasPriceData();
-        if (!priceData) {
-            assert(false, `Invalid gas price data`)
-            return;
-        }
-
-        if (priceData?.maxPriorityFeePerGas) {
-            this.gasPrice = priceData.maxPriorityFeePerGas
-        } else if (priceData?.gasPrice) {
-            this.gasPrice = priceData.gasPrice
-        }
-
-        console.log('gasPrice:', this.gasPrice.toString())
+        this.gasPrice = await this.accountMgr.getGasPrice();
 
         this.gas = BigNumber.from(event.gas)
         for (const reward of event.rewards) {
