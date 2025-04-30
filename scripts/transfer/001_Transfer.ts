@@ -30,9 +30,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
         return;
     }
 
+    const txType = await promptPositiveInteger("Enter The Tx Type(e.g. 0:legacy, 2:dynamicFee, others: unsupported):");
+    const accountMgr = new AccountMgr();
+    if (!accountMgr.initDefaultTxType(txType)) {
+        logger.color('red').bold().log("Invalid tx type");
+        return;
+    }
+
     // Init accounts
     logger.color('blue').bold().log("Init Accounts ...");
-    const accountMgr = new AccountMgr();
     const accountNum = 2000;
     await accountMgr.initAccounts(accountNum);
 

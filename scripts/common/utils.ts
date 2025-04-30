@@ -25,7 +25,7 @@ export async function waitForInput(message:string): Promise<string> {
 export async function promptPositiveInteger(prompt: string): Promise<number> {
   const input = await waitForInput(prompt);
   const value = parseInt(input, 10);
-  if (isNaN(value) || value <= 0) {
+  if (isNaN(value) || value < 0) {
       console.error("Invalid input. Please enter a positive integer.");
       return -1;
   }

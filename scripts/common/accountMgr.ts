@@ -17,6 +17,11 @@ export enum TransferResult {
     NonceBlocked,
 };
 
+enum TxType {
+    Legacy = 0,
+    DynamicFee = 2,
+}
+
 export class AccountMgr {
     readonly jsonFile: string = `db/${process.env.NETWORK}/accounts.json`;
 
@@ -28,10 +33,34 @@ export class AccountMgr {
     private providerInst: any;
 
     private nonceMutexes: Record<string, Mutex> = {};
+    private defaultTxType: number = TxType.Legacy;
 
     constructor() {
         this.providerInst = new Provider().getProviderInst();
         this.initDeployer();
+    }
+
+    initDefaultTxType(_txType: number): boolean {
+        const types = Object.values(TxType).filter(v => typeof v === 'number');
+        if (!types.includes(_txType)) return false
+
+        this.defaultTxType = _txType;
+        return true;
+    }
+
+    async getGasPriceData() {
+        if (this.defaultTxType === TxType.DynamicFee) {
+            return {
+                maxFeePerGas: BigNumber.from(0),
+                maxPriorityFeePerGas: BigNumber.from(0),
+                type: 2,
+            };
+        } else if (this.defaultTxType === TxType.Legacy) {
+            return {
+                gasPrice: BigNumber.from(0)
+            }
+        }
+        return null;
     }
 
     async getBalance(
@@ -173,12 +202,15 @@ export class AccountMgr {
         let ret: TransferResult = TransferResult.Failed;
         try {
             const wallet = new ethers.Wallet(from.privateKey, this.providerInst);
+            const priceData = this.getGasPriceData();
             const tx = await wallet.sendTransaction({
                 to: to.address,
-                value: amount
+                value: amount,
+                ...(priceData ?? {})
             });
 
             await tx.wait();
+            // console.log('tx:', tx);
             ret = TransferResult.Success;
         } catch(error) {
             matcher.filter("transfer", error);
@@ -205,10 +237,13 @@ export class AccountMgr {
             const newSigner = new ethers.Wallet(from.privateKey, this.providerInst);
             contract = contract.connect(newSigner);
 
-            // console.log(`Before transfer from ${from.address} to ${to.address}`);
+            const priceData = this.getGasPriceData();
             const tx = await contract.transfer(
                 to.address,
-                amount
+                amount,
+                {
+                    ...(priceData ?? {})
+                }
             );
 
             await tx.wait();
@@ -233,6 +268,10 @@ export class AccountMgr {
             return TransferResult.NonceBlocked;
         }
 
+        const priceData = this.getGasPriceData();
+
+        console.log(priceData);
+
         const matcher = new ExecutionErrorMatcher();
         const newSigner = new ethers.Wallet(from.privateKey, this.providerInst);
         let ret: TransferResult = TransferResult.Failed;
@@ -241,7 +280,10 @@ export class AccountMgr {
 
             const approveTx = await logicContract.approve(
                 proxyContract.address,
-                amount
+                amount,
+                {
+                    ...(priceData ?? {})
+                }
             );
 
             await approveTx.wait();
@@ -264,7 +306,10 @@ export class AccountMgr {
             proxyContract = proxyContract.connect(newSigner);
             const proxyTx = await proxyContract.proxyTransfer(
                 to.address,
-                amount
+                amount,
+                {
+                    ...(priceData ?? {})
+                }
             );
 
             await proxyTx.wait();
