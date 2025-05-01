@@ -491,7 +491,6 @@ export class ERC20Transfer extends Transfer {
 export class ERC20ProxyTransfer extends Transfer {
     proxyContract: any;
     logicContract: any;
-    approvalCount: number = 0;
 
 
     constructor(proxyContractInst: any, logicContractInst: any, requiredSuccessedCount: number) {
