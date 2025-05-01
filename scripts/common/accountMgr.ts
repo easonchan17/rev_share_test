@@ -3,7 +3,7 @@ import { BigNumber, ethers } from "ethers";
 import { Provider } from "./provider";
 import { Mutex } from 'async-mutex';
 import { randomInt } from 'crypto';
-import { createDirIfNotExist, ExecutionErrorMatcher, sleep, waitForInput } from "./utils";
+import { createDirIfNotExist, ExecutionErrorMatcher, waitForInput } from "./utils";
 import fs from "fs";
 
 export interface Account {
@@ -60,6 +60,10 @@ export class AccountMgr {
         }
 
         return feeData.gasPrice;
+    }
+
+    async getFeeData() {
+        return await (this.providerInst).getFeeData();
     }
 
     private printGasPriceData(tx: any) {
@@ -276,7 +280,8 @@ export class AccountMgr {
         logicContract: any,
         from: Account,
         to: Account,
-        amount: BigNumber
+        amount: BigNumber,
+        onApprovalCallback: any
     ): Promise<TransferResult> {
         if (!await this.lockNonce(from)) {
             return TransferResult.NonceBlocked;
@@ -329,7 +334,7 @@ export class AccountMgr {
             await proxyTx.wait();
             ret = TransferResult.Success;
         } catch (error) {
-            matcher.filter("proxyTransforERC20_2", error);
+            onApprovalCallback(logicContract, "Approval");
         }
 
         this.unlockNonce(from);

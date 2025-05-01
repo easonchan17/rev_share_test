@@ -6,6 +6,8 @@ import * as readline from 'readline';
 import chalk from 'chalk';
 import { ethers } from "hardhat";
 import { sleep } from "./utils";
+import { RewardRule } from "./rewardRule";
+import { Configuration } from "./configuration";
 
 export class Transfer {
     readonly MIN_BALANCE: BigNumber = BigNumber.from(10).pow(18);
@@ -22,6 +24,8 @@ export class Transfer {
     totalCount: number = 0;
     requiredSuccessedCount: number = 0;
 
+    stepFinishedCount: Record<string, number> = {}
+
     constructor() {
         this.name = this.constructor.name;
         this.isRunning = false;
@@ -35,6 +39,8 @@ export class Transfer {
             this.isRunning = false;
             console.log(chalk.yellow(`Stopping ${this.name}`));
         })
+
+        this.onStepFinished = this.onStepFinished.bind(this);
     }
 
     getName(): string {
@@ -50,7 +56,19 @@ export class Transfer {
         this.accountMgr = accountMgr;
     }
 
-    status(): [boolean, number] {
+    onStepFinished(contractInst: any, eventName: string) {
+        const rewardRule = new RewardRule(contractInst, new Configuration());
+        const topic = rewardRule.getEventTopic(eventName);
+        if (!topic) return;
+
+        if (!this.stepFinishedCount[topic]) {
+            this.stepFinishedCount[topic] = 0;
+        }
+
+        this.stepFinishedCount[topic] += 1;
+    }
+
+    status(): boolean {
         const successRate = (this.successedCount/this.totalCount*100).toFixed(2);
         const failedRate = (this.failedCount/this.totalCount*100).toFixed(2);
         const collisionRate = ((this.totalCount-this.successedCount-this.failedCount)/this.totalCount*100).toFixed(2);
@@ -62,7 +80,7 @@ export class Transfer {
             `nonce collision rate:${collisionRate}%`
         ));
 
-        return [this.isRunning, this.successedCount];
+        return this.isRunning;
     }
 
     stop() {
@@ -473,6 +491,8 @@ export class ERC20Transfer extends Transfer {
 export class ERC20ProxyTransfer extends Transfer {
     proxyContract: any;
     logicContract: any;
+    approvalCount: number = 0;
+
 
     constructor(proxyContractInst: any, logicContractInst: any, requiredSuccessedCount: number) {
         super();
@@ -519,7 +539,8 @@ export class ERC20ProxyTransfer extends Transfer {
                 this.logicContract,
                 from,
                 to,
-                amount
+                amount,
+                this.onStepFinished
             );
 
             if (ret != TransferResult.Success) {
@@ -552,7 +573,8 @@ export class Simulator {
     tasks: Record<string, Transfer> = {};
 
     balances: Record<string, BigNumber> = {}
-    gasPerTx: Record<string, BigNumber> = {}
+    gasPricePerOp: Record<string, BigNumber> = {}
+    gasPricePerStep: Record<string, Record<string,BigNumber>> = {}
 
     constructor(accountMgr: AccountMgr) {
         this.accountMgr = accountMgr;
@@ -570,13 +592,36 @@ export class Simulator {
 
         const gasPrice = await this.accountMgr.getGasPrice();
 
+        let idx = 0;
         for (const event of events) {
+            const isLastEvent = idx == events.length - 1;
             const gas = BigNumber.from(event.gas)
             for (const reward of event.rewards) {
-                this.balances[reward.rewardAddr] = await this.accountMgr.getBalance(reward.rewardAddr);
+                const curVal = gas.mul(reward.rewardPercentage).div(10000).mul(gasPrice);
 
-                const oldVal = this.gasPerTx[reward.rewardAddr] ?? BigNumber.from(0);
-                this.gasPerTx[reward.rewardAddr] = gas.mul(reward.rewardPercentage).div(10000).mul(gasPrice).add(oldVal);
+                // Record only intermediate steps.
+                if (!isLastEvent) {
+                    // Calc step gasPrice
+                    if (!this.gasPricePerStep[reward.rewardAddr]) {
+                        this.gasPricePerStep[reward.rewardAddr] = {};
+                    }
+
+                    // Avoid recording duplicate events
+                    if (!this.gasPricePerStep[reward.rewardAddr][event.eventSignature]) {
+                        this.gasPricePerStep[reward.rewardAddr][event.eventSignature] = curVal;
+                    }
+                }
+
+                // Calc operation gasPrice
+                if (!this.gasPricePerOp[reward.rewardAddr]) {
+                    this.gasPricePerOp[reward.rewardAddr] = BigNumber.from(0);
+                }
+                this.gasPricePerOp[reward.rewardAddr] = this.gasPricePerOp[reward.rewardAddr].add(curVal);
+
+                // Calc address balance
+                if (!this.balances[reward.rewardAddr]) {
+                    this.balances[reward.rewardAddr] = await this.accountMgr.getBalance(reward.rewardAddr);
+                }
             }
         }
     }
@@ -668,22 +713,50 @@ export class Simulator {
 
     private async showStatus() {
         let runningTaskCount = 0;
-        let totalSuccessedCount = 0;
         for (const task of Object.values(this.tasks)) {
-            const [isRunning, successedCount] = task.status();
+            const isRunning = task.status();
             if (isRunning) {
                 runningTaskCount++;
             }
-            totalSuccessedCount += successedCount;
         }
         console.log(chalk.blue(`There are ${runningTaskCount} tasks is Running`));
-
         if (runningTaskCount > 0) return;
 
-        for (const [addr, val] of Object.entries(this.gasPerTx)) {
+        await this.settlement();
+    }
+
+    private async settlement() {
+        const feeData = await this.accountMgr.getFeeData();
+        console.log("feeData:", feeData);
+
+        let totalSuccessedCount = 0;
+        let totalStepFinishedCount: Record<string, number> = {}
+        for (const task of Object.values(this.tasks)) {
+            totalSuccessedCount += task.successedCount;
+
+            for (const [step, count] of Object.entries(task.stepFinishedCount)) {
+                if (!totalStepFinishedCount[step]) {
+                    totalStepFinishedCount[step] = 0;
+                }
+                totalStepFinishedCount[step] += count;
+            }
+        }
+
+        console.log("totalSuccessedCount:", totalSuccessedCount);
+        console.log("totalStepFinishedCount:", totalStepFinishedCount);
+
+        for (const [addr, val] of Object.entries(this.gasPricePerOp)) {
             const oldBalance = this.balances[addr];
             const newBalance = await this.accountMgr.getBalance(addr);
-            const expectedAddBalance = this.gasPerTx[addr].mul(totalSuccessedCount);
+            let expectedAddBalance = val.mul(totalSuccessedCount);
+
+            for (const [step, totalCount] of Object.entries(totalStepFinishedCount)) {
+                if (!this.gasPricePerStep[addr] ||
+                    !this.gasPricePerStep[addr][step]) continue;
+
+                expectedAddBalance = expectedAddBalance.add(this.gasPricePerStep[addr][step].mul(totalCount))
+            }
+
             const actualAddAmount = newBalance.sub(oldBalance);
             console.log(chalk.blue(`Revenue sharing: address=${addr}, expected added amount=${expectedAddBalance}, actual added amount=${actualAddAmount}, is equal=${expectedAddBalance.eq(actualAddAmount)}`));
         }
